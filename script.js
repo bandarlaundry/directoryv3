@@ -15,7 +15,20 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// TOAST HELPER
+// FUNGSI GETBASEPATH() PORTABLE UNTUK GITHUB PAGES / LOCAL
+export function getBasePath() {
+  const path = window.location.pathname;
+  const segments = path.split('/').filter(Boolean);
+  if (window.location.hostname.includes('github.io') && segments.length > 0) {
+    return '/' + segments[0];
+  }
+  return '';
+}
+
+export function createSlug(text) {
+  return text.toString().toLowerCase().trim().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '');
+}
+
 export function showToast(msg, type = "info") {
   const toast = document.getElementById("toast");
   if (!toast) return;
@@ -25,7 +38,7 @@ export function showToast(msg, type = "info") {
   setTimeout(() => { toast.style.display = "none"; }, 3500);
 }
 
-// RENDER ADS DINAMIS DI HALAMAN UTAMA ATAU DETAIL
+// RENDER IKLAN BANNER DINAMIS
 export async function renderAds() {
   try {
     const snap = await getDocs(collection(db, "advertisements"));
@@ -44,13 +57,7 @@ export async function renderAds() {
 
     ads.forEach(ad => {
       if (!ad.imageUrl || !ad.linkUrl) return;
-
-      const adHtml = `
-        <a href="${ad.linkUrl}" target="_blank" class="ad-banner-link">
-          <img src="${ad.imageUrl}" class="ad-banner-img" alt="Iklan Banner">
-        </a>
-      `;
-
+      const adHtml = `<a href="${ad.linkUrl}" target="_blank" class="ad-banner-link"><img src="${ad.imageUrl}" class="ad-banner-img" alt="Iklan Banner"></a>`;
       if (ad.placement === 'main_top' && slotMainTop) slotMainTop.innerHTML = adHtml;
       if (ad.placement === 'main_bottom' && slotMainBottom) slotMainBottom.innerHTML = adHtml;
       if (ad.placement === 'detail_top' && slotDetailTop) slotDetailTop.innerHTML = adHtml;
@@ -61,7 +68,7 @@ export async function renderAds() {
   }
 }
 
-// LOGIKA HALAMAN UTAMA (INDEX.HTML & 404.HTML)
+// SETUP DOM GLOBAL & DARK MODE
 document.addEventListener("DOMContentLoaded", () => {
   renderAds();
 
@@ -81,106 +88,4 @@ document.addEventListener("DOMContentLoaded", () => {
       darkToggle.innerText = isDark ? "☀️ Mode Terang" : "🌙 Mode Gelap";
     };
   }
-
-  // --- LOGIKA HALAMAN ADMIN PANEL ---
-  const adModal = document.getElementById("ad-modal");
-  const openAdBtn = document.getElementById("open-ad-modal-btn");
-  const closeAdBtn = document.getElementById("close-ad-modal-btn");
-  const adForm = document.getElementById("add-ad-form");
-
-  if (openAdBtn && adModal) {
-    openAdBtn.onclick = () => {
-      document.getElementById("ad-modal-title").innerText = "Tambah Iklan Baru";
-      adForm.reset();
-      document.getElementById("ad-id").value = "";
-      adModal.classList.add("active");
-    };
-
-    if (closeAdBtn) closeAdBtn.onclick = () => adModal.classList.remove("active");
-
-    adForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const id = document.getElementById("ad-id").value;
-      const imageUrl = document.getElementById("ad-image-url").value.trim();
-      const linkUrl = document.getElementById("ad-target-url").value.trim();
-      const placement = document.getElementById("ad-placement").value;
-
-      try {
-        if (id) {
-          await updateDoc(doc(db, "advertisements", id), { imageUrl, linkUrl, placement, updatedAt: serverTimestamp() });
-          showToast("Iklan berhasil diperbarui!", "success");
-        } else {
-          await addDoc(collection(db, "advertisements"), { imageUrl, linkUrl, placement, createdAt: serverTimestamp() });
-          showToast("Iklan baru berhasil ditambahkan!", "success");
-        }
-        adModal.classList.remove("active");
-        loadAdminAds();
-        renderAds();
-      } catch (err) {
-        showToast("Gagal menyimpan iklan: " + err.message, "error");
-      }
-    };
-
-    loadAdminAds();
-  }
 });
-
-// LOGIKA ADMIN MANAJEMEN IKLAN (CRUD)
-async function loadAdminAds() {
-  const wrapper = document.getElementById("ads-cards-wrapper");
-  if (!wrapper) return;
-
-  try {
-    const snap = await getDocs(collection(db, "advertisements"));
-    wrapper.innerHTML = "";
-
-    if (snap.empty) {
-      wrapper.innerHTML = "<div>Belum ada materi iklan. Tambahkan iklan baru.</div>";
-      return;
-    }
-
-    snap.forEach(d => {
-      const ad = { id: d.id, ...d.data() };
-      let placementText = "Halaman Utama - Top";
-      if (ad.placement === 'main_bottom') placementText = "Halaman Utama - Bottom";
-      if (ad.placement === 'detail_top') placementText = "Halaman Detail - Top";
-      if (ad.placement === 'detail_bottom') placementText = "Halaman Detail - Bottom";
-
-      const card = document.createElement("div");
-      card.className = "admin-item-card";
-      card.innerHTML = `
-        <div class="admin-item-header">
-          <strong style="color:var(--primary);">${placementText}</strong>
-          <span class="badge badge-active">Aktif</span>
-        </div>
-        <img src="${ad.imageUrl}" style="width:100%; height:80px; object-fit:cover; border-radius:4px;" alt="Banner">
-        <div><small>Link Tujuan:</small> <a href="${ad.linkUrl}" target="_blank">${ad.linkUrl}</a></div>
-        <div class="admin-item-actions">
-          <button class="btn btn-primary" id="edit-ad-${ad.id}">Edit Iklan</button>
-          <button class="btn btn-danger" id="del-ad-${ad.id}">Hapus Iklan</button>
-        </div>
-      `;
-      wrapper.appendChild(card);
-
-      setTimeout(() => {
-        document.getElementById(`edit-ad-${ad.id}`).onclick = () => {
-          document.getElementById("ad-modal-title").innerText = "Edit Iklan";
-          document.getElementById("ad-id").value = ad.id;
-          document.getElementById("ad-image-url").value = ad.imageUrl;
-          document.getElementById("ad-target-url").value = ad.linkUrl;
-          document.getElementById("ad-placement").value = ad.placement;
-          document.getElementById("ad-modal").classList.add("active");
-        };
-
-        document.getElementById(`del-ad-${ad.id}`).onclick = async () => {
-          await deleteDoc(doc(db, "advertisements", ad.id));
-          showToast("Iklan berhasil dihapus!", "success");
-          loadAdminAds();
-          renderAds();
-        };
-      }, 0);
-    });
-  } catch (err) {
-    console.error("Load ads error:", err);
-  }
-}
